@@ -7,6 +7,21 @@ unsigned long gcd(unsigned long a, unsigned long b) {
   return gcd(b, a % b);
 }
 
+// Keys on 4x4 keypad
+char keypadKeys[4][4] {
+  {'1','2','3','A'},
+  {'4','5','6','B'},
+  {'7','8','9','C'},
+  {'*','0','#','D'}
+};
+
+// Keypad row and col pinouts, provided by ELEGOO
+byte rowPins[4] = {9, 8, 7, 6};
+byte colPins[4] = {5, 4, 3, 2};
+
+// Instantiate Keypad object
+Keypad bikeKeypad = Keypad(makeKeymap(keypadKeys), rowPins, colPins, 4, 4);
+
 // Used for timer interrupts
 volatile unsigned char timerFlag = 0;
 void TimerISR() { 
@@ -27,8 +42,10 @@ const char startState = 0;    // Refers to first state enum
 unsigned long GCD = 0;        // For timer period
 
 // Task 1 (...)
-enum T1_States { T1_SMStart };
-int TickFct_T1(int state) {
+enum KP_States { KP_SMStart };
+int TickFct_Keypad(int state) {
+  char inputKey = bikeKeypad.getKey();
+  if (inputKey) Serial.println(inputKey);
   return state;
 }
 
@@ -37,9 +54,9 @@ void setup() {
 
   // Task 1 (...)
   tasks[j]->state = startState;
-  tasks[j]->period = 100000;
+  tasks[j]->period = 200000;
   tasks[j]->elapsedTime = tasks[j]->period;
-  tasks[j]->TickFct = &TickFct_T1;
+  tasks[j]->TickFct = &TickFct_Keypad;
   ++j;
 
   // Find GCD for timer's period
