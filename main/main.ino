@@ -1,5 +1,6 @@
 #include <TimerOne.h>
 #include <Keypad.h>
+#include <stdbool.h>
 
 // Computes GCD of two numbers
 unsigned long gcd(unsigned long a, unsigned long b) {
@@ -15,12 +16,12 @@ char keypadKeys[4][4] {
   {'*','0','#','D'}
 };
 
-// Keypad row and col pinouts, provided by ELEGOO
-byte rowPins[4] = {9, 8, 7, 6};
-byte colPins[4] = {5, 4, 3, 2};
-
-// Instantiate Keypad object
-Keypad bikeKeypad = Keypad(makeKeymap(keypadKeys), rowPins, colPins, 4, 4);
+byte rowPins[4] = {9, 8, 7, 6};		// Keypad row pinouts, provided by ELEGOO
+byte colPins[4] = {5, 4, 3, 2};		// Keypad col pinouts, provided by ELEGOO
+char keypadCode[4] = {'1','2','3','4'}; 	// Code to lock/unlock bike (read right to left)
+Keypad bikeKeypad = Keypad(makeKeymap(keypadKeys), rowPins, colPins, 4, 4); 	// Instantiate Keypad object
+bool bikeLocked = false; 			// Flag for lock status
+char inputKey;						// Storing keypad button
 
 // Used for timer interrupts
 volatile unsigned char timerFlag = 0;
@@ -35,26 +36,127 @@ typedef struct task {
   int (*TickFct)(int);          // Address of tick function
 } task;
 
-static task task1;
-task* tasks[] = { &task1 };
+static task task1, task2;
+task* tasks[] = { &task1, &task2 };
 const unsigned char numTasks = sizeof(tasks) / sizeof(tasks[0]);
 const char startState = 0;    // Refers to first state enum
 unsigned long GCD = 0;        // For timer period
 
-// Task 1 (...)
-enum KP_States { KP_SMStart };
-int TickFct_Keypad(int state) {
-  char inputKey = bikeKeypad.getKey();
-  if (inputKey) Serial.println(inputKey);
+// Task 1 (Store the key being pressed on keypad)
+enum GK_States { GK_SMStart };
+int TickFct_GetKey(int state) {
+  char tempKey = bikeKeypad.getKey();
+  if (tempKey) {
+	inputKey = tempKey;
+	Serial.println(inputKey);
+	Serial.print("Variable bikeLocked = ");
+	Serial.println(bikeLocked);
+  }
   return state;
+}
+
+// Task 2 (Locks/unlocks with keypad)
+enum KP_States { KP_SMStart, KP_Wait, KP_Digit1, KP_Digit2, KP_Digit3, KP_Digit4 };
+int TickFct_Keypad(int state) {
+	switch (state) {	// State transitions
+		case KP_SMStart:
+			state = KP_Wait;
+			break;
+		
+		case KP_Wait:
+			if (inputKey == keypadCode[0]) {
+				state = KP_Digit1;
+			}
+			else {
+				state = KP_Wait;
+			}
+			break;
+			
+		case KP_Digit1:
+			if (inputKey == keypadCode[1]) {
+				state = KP_Digit2;
+			}
+			else if (inputKey == keypadCode[0]) {
+				state = KP_Digit1;
+			}
+			else {
+				state = KP_Wait;
+			}
+			break;
+			
+		case KP_Digit2:
+			if (inputKey == keypadCode[2]) {
+				state = KP_Digit3;
+			}
+			else if (inputKey == keypadCode[1]) {
+				state = KP_Digit2;
+			}
+			else {
+				state = KP_Wait;
+			}
+			break;
+			
+		case KP_Digit3:
+			if (inputKey == keypadCode[3]) {
+				state = KP_Digit4;
+			}
+			else if (inputKey == keypadCode[2]) {
+				state = KP_Digit3;
+			}
+			else {
+				state = KP_Wait;
+			}
+			break;
+			
+		case KP_Digit4:
+			state = KP_Wait;
+			break;
+			
+		default:
+			state = KP_SMStart;
+			break;
+	}
+	switch (state) {	// State actions
+		case KP_Wait:
+			Serial.println("I'm in state Wait.");
+			break;
+		
+		case KP_Digit1:
+			Serial.println("I'm in state 1.");
+			break;
+			
+		case KP_Digit2:
+			Serial.println("I'm in state 2.");
+			break;
+			
+		case KP_Digit3:
+			Serial.println("I'm in state 3.");
+			break;
+			
+		case KP_Digit4:
+			bikeLocked = !bikeLocked;
+			Serial.println("I'm in state 4.");
+			break;
+			
+		default:
+			break;
+	}
+	return state;
 }
 
 void setup() {
   unsigned char j = 0;
 
-  // Task 1 (...)
+  // Task 1 (Store the key being pressed on keypad)
   tasks[j]->state = startState;
   tasks[j]->period = 200000;
+  tasks[j]->elapsedTime = tasks[j]->period;
+  tasks[j]->TickFct = &TickFct_GetKey;
+  ++j;
+  
+  // Task 2 (Locks/unlocks with keypad)
+  tasks[j]->state = startState;
+  tasks[j]->period = 100000;
   tasks[j]->elapsedTime = tasks[j]->period;
   tasks[j]->TickFct = &TickFct_Keypad;
   ++j;
