@@ -2,10 +2,10 @@
 #include <Keypad.h>
 #include <SPI.h>
 #include <MFRC522.h>
-#include <stdbool.h>
 
 #define RST_PIN 10
-#define SS_PIN 53
+#define SS_PIN  53
+#define BUZZER  11
 
 MFRC522 RFID(SS_PIN, RST_PIN);	// Create RFID instance
 
@@ -23,12 +23,12 @@ char keypadKeys[4][4] {
   {'*','0','#','D'}
 };
 
-byte rowPins[4] = {9, 8, 7, 6};		// Keypad row pinouts, provided by ELEGOO
-byte colPins[4] = {5, 4, 3, 2};		// Keypad col pinouts, provided by ELEGOO
-char keypadCode[4] = {'1','2','3','4'}; 	// Code to lock/unlock bike (read right to left)
+byte rowPins[4] = {9, 8, 7, 6};			// Keypad row pinouts, provided by ELEGOO
+byte colPins[4] = {5, 4, 3, 2};			// Keypad col pinouts, provided by ELEGOO
+char keypadCode[4] = {'1','2','3','4'}; // Code to lock/unlock bike (read right to left)
 Keypad bikeKeypad = Keypad(makeKeymap(keypadKeys), rowPins, colPins, 4, 4); 	// Instantiate Keypad object
-bool bikeLocked = false; 			// Flag for lock status
-char inputKey;						// Storing keypad button
+bool bikeLocked = false; 				// Flag for lock status
+char inputKey;							// Storing keypad button
 
 // Used for timer interrupts
 volatile unsigned char timerFlag = 0;
@@ -55,6 +55,8 @@ int TickFct_GetKey(int state) {
   char tempKey = bikeKeypad.getKey();
   if (tempKey) {
 	inputKey = tempKey;
+	tone(BUZZER, 400, 100);
+	
 	Serial.print("Input key = ");
 	Serial.println(inputKey);
 	Serial.print("Variable bikeLocked = ");
