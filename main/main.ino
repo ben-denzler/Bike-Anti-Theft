@@ -3,9 +3,11 @@
 #include <SPI.h>
 #include <MFRC522.h>
 
-#define RST_PIN 10
-#define SS_PIN  53
-#define BUZZER  11
+#define RST_PIN   10
+#define SS_PIN    53
+#define BUZZER    11
+#define RED_LED   23
+#define GREEN_LED 22
 
 MFRC522 RFID(SS_PIN, RST_PIN);	// Create RFID instance
 
@@ -43,8 +45,8 @@ typedef struct task {
   int (*TickFct)(int);          // Address of tick function
 } task;
 
-static task task1, task2, task3;
-task* tasks[] = { &task1, &task2, &task3 };
+static task task1, task2, task3, task4;
+task* tasks[] = { &task1, &task2, &task3, &task4 };
 const unsigned char numTasks = sizeof(tasks) / sizeof(tasks[0]);
 const char startState = 0;    // Refers to first state enum
 unsigned long GCD = 0;        // For timer period
@@ -238,6 +240,19 @@ int TickFct_RFID(int state) {
 	return state;
 }
 
+// Task 4 (Lights LEDs to indicate lock status)
+int TickFct_LED(int state) {
+	if (!bikeLocked) {
+		digitalWrite(GREEN_LED, HIGH);
+		digitalWrite(RED_LED, LOW);
+	} 
+	else {
+		digitalWrite(GREEN_LED, LOW);
+		digitalWrite(RED_LED, HIGH);
+	}
+	return state;
+}
+
 void setup() {
   unsigned char j = 0;
 
@@ -261,6 +276,13 @@ void setup() {
   tasks[j]->elapsedTime = tasks[j]->period;
   tasks[j]->TickFct = &TickFct_RFID;
   ++j;
+  
+  // Task 4 (Lights LEDs to indicate lock status)
+  tasks[j]->state = startState;
+  tasks[j]->period = 100000;
+  tasks[j]->elapsedTime = tasks[j]->period;
+  tasks[j]->TickFct = &TickFct_LED;
+  ++j;
 
   // Find GCD for timer's period
   GCD = tasks[0]->period;
@@ -268,6 +290,8 @@ void setup() {
     GCD = gcd(GCD, tasks[i]->period); 
   }
   
+  pinMode(GREEN_LED, OUTPUT);		  // Powering green LED
+  pinMode(RED_LED, OUTPUT);			  // Powering red LED
   Serial.begin(9600);                 // Baud rate is 9600 (serial output)
   SPI.begin();						  // Initialize SPI bus for RFID
   RFID.PCD_Init();					  // Initialize RFID module
