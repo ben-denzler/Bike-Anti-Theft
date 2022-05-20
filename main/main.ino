@@ -150,9 +150,75 @@ int TickFct_Keypad(int state) {
 }
 
 // Task 3 (Locks/unlocks with RFID)
+enum RFID_States { RFID_SMStart, RFID_Wait, RFID_Read, RFID_Cooldown };
 int TickFct_RFID(int state) {
 	
-	// Look for any RFID cards, select one if present
+	volatile unsigned char i;
+	
+	switch (state) {	// State transitions
+		case RFID_SMStart:
+			state = RFID_Wait;
+			break;
+			
+		case RFID_Wait:
+			if (!RFID.PICC_IsNewCardPresent() || !RFID.PICC_ReadCardSerial()) {	  // Checks for RFID tag
+				state = RFID_Wait;
+			}
+			else {
+				state = RFID_Read;
+			}
+			break;
+			
+		case RFID_Read:
+			i = 0;
+			Serial.println("Waiting 2 seconds...\n");
+			state = RFID_Cooldown;
+			break;
+			
+		case RFID_Cooldown:
+			if (i < 10) {   // Wait 2 sec
+				state = RFID_Cooldown;
+			}
+			else {
+				state = RFID_Wait;
+			}
+			break;
+			
+		default:
+			state = RFID_SMStart;
+			break;
+	}
+	switch (state) {	// State actions
+		case RFID_Wait:
+			break;
+			
+		case RFID_Read:
+			// Check the UID of the tag (first 4 bytes)
+			if (RFID.uid.uidByte[0] == 0xA3 &&
+				RFID.uid.uidByte[1] == 0x26 &&
+				RFID.uid.uidByte[2] == 0x25 &&
+				RFID.uid.uidByte[3] == 0x0C) {
+					
+				bikeLocked = !bikeLocked;
+				
+				Serial.println("UID read success!");
+				Serial.print("Variable bikeLocked = ");
+				Serial.println(bikeLocked);
+			}
+			else {
+				Serial.println("UID read fail!");
+			}
+			break;
+			
+		case RFID_Cooldown:
+			++i;
+			break;
+			
+		default:
+			break;
+	}
+	
+/* 	// Look for any RFID cards, select one if present
 	if (!RFID.PICC_IsNewCardPresent() || !RFID.PICC_ReadCardSerial()) return state;
 	
 	// Check the UID of the tag (first 4 bytes)
@@ -167,7 +233,7 @@ int TickFct_RFID(int state) {
 	}
 	else {
 		Serial.println("UID read fail!");
-	}
+	} */
 	
 	return state;
 }
@@ -191,7 +257,7 @@ void setup() {
   
   // Task 3 (Locks/unlocks with RFID)
   tasks[j]->state = startState;
-  tasks[j]->period = 250000;
+  tasks[j]->period = 200000;
   tasks[j]->elapsedTime = tasks[j]->period;
   tasks[j]->TickFct = &TickFct_RFID;
   ++j;
