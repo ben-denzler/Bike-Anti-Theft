@@ -1,6 +1,13 @@
 #include <TimerOne.h>
 #include <Keypad.h>
+#include <SPI.h>
+#include <MFRC522.h>
 #include <stdbool.h>
+
+#define RST_PIN 10
+#define SS_PIN 53
+
+MFRC522 RFID(SS_PIN, RST_PIN);	// Create RFID instance
 
 // Computes GCD of two numbers
 unsigned long gcd(unsigned long a, unsigned long b) {
@@ -36,8 +43,8 @@ typedef struct task {
   int (*TickFct)(int);          // Address of tick function
 } task;
 
-static task task1, task2;
-task* tasks[] = { &task1, &task2 };
+static task task1, task2, task3;
+task* tasks[] = { &task1, &task2, &task3 };
 const unsigned char numTasks = sizeof(tasks) / sizeof(tasks[0]);
 const char startState = 0;    // Refers to first state enum
 unsigned long GCD = 0;        // For timer period
@@ -48,6 +55,7 @@ int TickFct_GetKey(int state) {
   char tempKey = bikeKeypad.getKey();
   if (tempKey) {
 	inputKey = tempKey;
+	Serial.print("Input key = ");
 	Serial.println(inputKey);
 	Serial.print("Variable bikeLocked = ");
 	Serial.println(bikeLocked);
@@ -118,29 +126,47 @@ int TickFct_Keypad(int state) {
 	}
 	switch (state) {	// State actions
 		case KP_Wait:
-			Serial.println("I'm in state Wait.");
 			break;
 		
 		case KP_Digit1:
-			Serial.println("I'm in state 1.");
 			break;
 			
 		case KP_Digit2:
-			Serial.println("I'm in state 2.");
 			break;
 			
 		case KP_Digit3:
-			Serial.println("I'm in state 3.");
 			break;
 			
 		case KP_Digit4:
 			bikeLocked = !bikeLocked;
-			Serial.println("I'm in state 4.");
 			break;
 			
 		default:
 			break;
 	}
+	return state;
+}
+
+// Task 3 (Locks/unlocks with RFID)
+int TickFct_RFID(int state) {
+	
+	// Look for any RFID cards, select one if present
+	if (!RFID.PICC_IsNewCardPresent() || !RFID.PICC_ReadCardSerial()) return state;
+	
+	// Check the UID of the tag (first 4 bytes)
+	if (RFID.uid.uidByte[0] == 0xA3 &&
+		RFID.uid.uidByte[1] == 0x26 &&
+		RFID.uid.uidByte[2] == 0x25 &&
+		RFID.uid.uidByte[3] == 0x0C) {
+		bikeLocked = !bikeLocked;
+		Serial.println("UID read success!");
+		Serial.print("Variable bikeLocked = ");
+		Serial.println(bikeLocked);
+	}
+	else {
+		Serial.println("UID read fail!");
+	}
+	
 	return state;
 }
 
@@ -160,6 +186,13 @@ void setup() {
   tasks[j]->elapsedTime = tasks[j]->period;
   tasks[j]->TickFct = &TickFct_Keypad;
   ++j;
+  
+  // Task 3 (Locks/unlocks with RFID)
+  tasks[j]->state = startState;
+  tasks[j]->period = 250000;
+  tasks[j]->elapsedTime = tasks[j]->period;
+  tasks[j]->TickFct = &TickFct_RFID;
+  ++j;
 
   // Find GCD for timer's period
   GCD = tasks[0]->period;
@@ -168,6 +201,8 @@ void setup() {
   }
   
   Serial.begin(9600);                 // Baud rate is 9600 (serial output)
+  SPI.begin();						  // Initialize SPI bus for RFID
+  RFID.PCD_Init();					  // Initialize RFID module
   Timer1.initialize(GCD);             // GCD is in microseconds
   Timer1.attachInterrupt(TimerISR);   // TimerISR runs on interrupt
 }
@@ -197,4 +232,14 @@ https://www.arduino.cc/reference/en/libraries/timerone/
 
 GCD function (Euclid's algorithm):
 https://www.tutorialspoint.com/c-program-to-implement-euclid-s-algorithm
+
+Using the Arduino Keypad library to interface with keypad:
+https://www.arduino.cc/reference/en/libraries/keypad/
+
+Using the MFRC522 library to interface with RFID module:
+https://www.arduino.cc/reference/en/libraries/mfrc522/
+
+Learned how to read the UID of the MFRC522 RFID tag:
+https://randomnerdtutorials.com/security-access-using-mfrc522-rfid-reader-with-arduino/
+https://stackoverflow.com/questions/32839396/how-to-get-the-uid-of-rfid-in-arduino
 */
