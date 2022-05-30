@@ -6,8 +6,13 @@
 #define RST_PIN   10
 #define SS_PIN    53
 #define BUZZER    11
-#define RED_LED   23
+#define BLUE_LED  23
 #define GREEN_LED 22
+#define RED_LED_1 24
+#define RED_LED_2 25
+#define RED_LED_3 26
+#define RED_LED_4 27
+#define RED_LED_5 28
 
 MFRC522 RFID(SS_PIN, RST_PIN);	// Create RFID instance
 
@@ -37,7 +42,7 @@ char inputKey;							// Storing keypad button
 
 // Used for timer interrupts
 volatile unsigned char timerFlag = 0;
-void TimerISR() { 
+void TimerISR() {
   timerFlag = 1;
 }
 
@@ -48,8 +53,8 @@ typedef struct task {
   int (*TickFct)(int);          // Address of tick function
 } task;
 
-static task task1, task2, task3, task4, task5;
-task* tasks[] = { &task1, &task2, &task3, &task4, &task5 };
+static task task1, task2, task3, task4, task5, task6;
+task* tasks[] = { &task1, &task2, &task3, &task4, &task5, &task6 };
 const unsigned char numTasks = sizeof(tasks) / sizeof(tasks[0]);
 const char startState = 0;    // Refers to first state enum
 unsigned long GCD = 0;        // For timer period
@@ -61,7 +66,7 @@ int TickFct_GetKey(int state) {
   if (tempKey) {
 	inputKey = tempKey;
 	tone(BUZZER, 400, 100);
-	
+
 	Serial.print("Input key = ");
 	Serial.println(inputKey);
 	Serial.print("Variable bikeLocked = ");
@@ -77,7 +82,7 @@ int TickFct_Keypad(int state) {
 		case KP_SMStart:
 			state = KP_Wait;
 			break;
-		
+
 		case KP_Wait:
 			if (inputKey == keypadCode[0]) {
 				state = KP_Digit1;
@@ -86,7 +91,7 @@ int TickFct_Keypad(int state) {
 				state = KP_Wait;
 			}
 			break;
-			
+
 		case KP_Digit1:
 			if (inputKey == keypadCode[1]) {
 				state = KP_Digit2;
@@ -98,7 +103,7 @@ int TickFct_Keypad(int state) {
 				state = KP_Wait;
 			}
 			break;
-			
+
 		case KP_Digit2:
 			if (inputKey == keypadCode[2]) {
 				state = KP_Digit3;
@@ -110,7 +115,7 @@ int TickFct_Keypad(int state) {
 				state = KP_Wait;
 			}
 			break;
-			
+
 		case KP_Digit3:
 			if (inputKey == keypadCode[3]) {
 				state = KP_Digit4;
@@ -122,11 +127,11 @@ int TickFct_Keypad(int state) {
 				state = KP_Wait;
 			}
 			break;
-			
+
 		case KP_Digit4:
 			state = KP_Wait;
 			break;
-			
+
 		default:
 			state = KP_SMStart;
 			break;
@@ -134,20 +139,20 @@ int TickFct_Keypad(int state) {
 	switch (state) {	// State actions
 		case KP_Wait:
 			break;
-		
+
 		case KP_Digit1:
 			break;
-			
+
 		case KP_Digit2:
 			break;
-			
+
 		case KP_Digit3:
 			break;
-			
+
 		case KP_Digit4:
 			bikeLocked = !bikeLocked;
 			break;
-			
+
 		default:
 			break;
 	}
@@ -157,14 +162,14 @@ int TickFct_Keypad(int state) {
 // Task 3 (Locks/unlocks with RFID)
 enum RFID_States { RFID_SMStart, RFID_Wait, RFID_Read, RFID_Cooldown };
 int TickFct_RFID(int state) {
-	
+
 	static unsigned char i;
-	
+
 	switch (state) {	// State transitions
 		case RFID_SMStart:
 			state = RFID_Wait;
 			break;
-			
+
 		case RFID_Wait:
 			if (!RFID.PICC_IsNewCardPresent() || !RFID.PICC_ReadCardSerial()) {	  // Checks for RFID tag
 				state = RFID_Wait;
@@ -173,13 +178,13 @@ int TickFct_RFID(int state) {
 				state = RFID_Read;
 			}
 			break;
-			
+
 		case RFID_Read:
 			i = 0;
 			Serial.println("Waiting 2 seconds...\n");
 			state = RFID_Cooldown;
 			break;
-			
+
 		case RFID_Cooldown:
 			if (i < 10) {   // Wait 2 sec
 				state = RFID_Cooldown;
@@ -188,7 +193,7 @@ int TickFct_RFID(int state) {
 				state = RFID_Wait;
 			}
 			break;
-			
+
 		default:
 			state = RFID_SMStart;
 			break;
@@ -196,17 +201,17 @@ int TickFct_RFID(int state) {
 	switch (state) {	// State actions
 		case RFID_Wait:
 			break;
-			
+
 		case RFID_Read:
 			// Check the UID of the tag (first 4 bytes)
 			if (RFID.uid.uidByte[0] == 0xA3 &&
 				RFID.uid.uidByte[1] == 0x26 &&
 				RFID.uid.uidByte[2] == 0x25 &&
 				RFID.uid.uidByte[3] == 0x0C) {
-					
+
 				tone(BUZZER, 400, 100);
 				bikeLocked = !bikeLocked;
-				
+
 				Serial.println("UID read success!");
 				Serial.print("Variable bikeLocked = ");
 				Serial.println(bikeLocked);
@@ -216,18 +221,18 @@ int TickFct_RFID(int state) {
 				Serial.println("UID read fail!");
 			}
 			break;
-			
+
 		case RFID_Cooldown:
 			++i;
 			break;
-			
+
 		default:
 			break;
 	}
-	
+
 /* 	// Look for any RFID cards, select one if present
 	if (!RFID.PICC_IsNewCardPresent() || !RFID.PICC_ReadCardSerial()) return state;
-	
+
 	// Check the UID of the tag (first 4 bytes)
 	if (RFID.uid.uidByte[0] == 0xA3 &&
 		RFID.uid.uidByte[1] == 0x26 &&
@@ -241,7 +246,7 @@ int TickFct_RFID(int state) {
 	else {
 		Serial.println("UID read fail!");
 	} */
-	
+
 	return state;
 }
 
@@ -249,11 +254,11 @@ int TickFct_RFID(int state) {
 int TickFct_LED(int state) {
 	if (!bikeLocked) {
 		digitalWrite(GREEN_LED, HIGH);
-		digitalWrite(RED_LED, LOW);
-	} 
+		digitalWrite(BLUE_LED, LOW);
+	}
 	else {
 		digitalWrite(GREEN_LED, LOW);
-		digitalWrite(RED_LED, HIGH);
+		digitalWrite(BLUE_LED, HIGH);
 	}
 	return state;
 }
@@ -303,7 +308,7 @@ int TickFct_BikeSteal(int state) {	// State transitions
 				state = BS_Wait;
 			}
 			break;
-		
+
 		default:
 			state = BS_SMStart;
 			break;
@@ -314,11 +319,7 @@ int TickFct_BikeSteal(int state) {	// State transitions
 			break;
 
 		case BS_Count:
-			Serial.print("i (before) = ");
-			Serial.println(i);
 			++i;
-			Serial.print("i (after) = ");
-			Serial.println(i);
 			bikeAlarm = false;
 			break;
 
@@ -331,14 +332,40 @@ int TickFct_BikeSteal(int state) {	// State transitions
 	}
 
 	// DEBUGGING
-	Serial.print("BS_state = ");
-	Serial.println(state);
-	// Serial.print("i = ");
-	// Serial.println(i);
+	Serial.print("i = ");
+	Serial.println(i);
 	Serial.print("bikeAlarm = ");
 	Serial.println(bikeAlarm);
 	Serial.println();
 
+	return state;
+}
+
+// Task 6 (Flashes LEDs if bike is being moved while locked)
+int TickFct_AlarmLED(int state) {
+	if (bikeAlarm) {
+		if (digitalRead(RED_LED_1) == HIGH) {
+			digitalWrite(RED_LED_1, LOW);
+			digitalWrite(RED_LED_2, LOW);
+			digitalWrite(RED_LED_3, LOW);
+			digitalWrite(RED_LED_4, LOW);
+			digitalWrite(RED_LED_5, LOW);
+		}
+		else {
+			digitalWrite(RED_LED_1, HIGH);
+			digitalWrite(RED_LED_2, HIGH);
+			digitalWrite(RED_LED_3, HIGH);
+			digitalWrite(RED_LED_4, HIGH);
+			digitalWrite(RED_LED_5, HIGH);
+		}
+	}
+	else {
+		digitalWrite(RED_LED_1, LOW);
+		digitalWrite(RED_LED_2, LOW);
+		digitalWrite(RED_LED_3, LOW);
+		digitalWrite(RED_LED_4, LOW);
+		digitalWrite(RED_LED_5, LOW);
+	}
 	return state;
 }
 
@@ -351,21 +378,21 @@ void setup() {
   tasks[j]->elapsedTime = tasks[j]->period;
   tasks[j]->TickFct = &TickFct_GetKey;
   ++j;
-  
+
   // Task 2 (Locks/unlocks with keypad)
   tasks[j]->state = startState;
   tasks[j]->period = 100000;
   tasks[j]->elapsedTime = tasks[j]->period;
   tasks[j]->TickFct = &TickFct_Keypad;
   ++j;
-  
+
   // Task 3 (Locks/unlocks with RFID)
   tasks[j]->state = startState;
   tasks[j]->period = 200000;
   tasks[j]->elapsedTime = tasks[j]->period;
   tasks[j]->TickFct = &TickFct_RFID;
   ++j;
-  
+
   // Task 4 (Lights LEDs to indicate lock status)
   tasks[j]->state = startState;
   tasks[j]->period = 100000;
@@ -380,14 +407,27 @@ void setup() {
   tasks[j]->TickFct = &TickFct_BikeSteal;
   ++j;
 
+  // Task 6 (Flashes LEDs if bike is being moved while locked)
+  tasks[j]->state = startState;
+  tasks[j]->period = 50000;
+  tasks[j]->elapsedTime = tasks[j]->period;
+  tasks[j]->TickFct = &TickFct_AlarmLED;
+  ++j;
+
   // Find GCD for timer's period
   GCD = tasks[0]->period;
   for (unsigned char i = 1; i < numTasks; ++i) {
-    GCD = gcd(GCD, tasks[i]->period); 
+    GCD = gcd(GCD, tasks[i]->period);
   }
-  
-  pinMode(GREEN_LED, OUTPUT);		  // Powering green LED
-  pinMode(RED_LED, OUTPUT);			  // Powering red LED
+
+  pinMode(GREEN_LED, OUTPUT);
+  pinMode(BLUE_LED, OUTPUT);
+  pinMode(RED_LED_1, OUTPUT);
+  pinMode(RED_LED_2, OUTPUT);
+  pinMode(RED_LED_3, OUTPUT);
+  pinMode(RED_LED_4, OUTPUT);
+  pinMode(RED_LED_5, OUTPUT);
+
   Serial.begin(9600);                 // Baud rate is 9600 (serial output)
   SPI.begin();						  // Initialize SPI bus for RFID
   RFID.PCD_Init();					  // Initialize RFID module
