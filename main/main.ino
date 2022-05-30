@@ -30,7 +30,10 @@ byte colPins[4] = {5, 4, 3, 2};			// Keypad col pinouts, provided by ELEGOO
 char keypadCode[4] = {'1','2','3','4'}; // Code to lock/unlock bike (read right to left)
 Keypad bikeKeypad = Keypad(makeKeymap(keypadKeys), rowPins, colPins, 4, 4);
 bool bikeLocked = false; 				// Flag for lock status
+bool bikeAlarm = false; 				// Flag for alarm sounding
+int bikeSpeed = 5;						// Current speed in MPH
 char inputKey;							// Storing keypad button
+
 
 // Used for timer interrupts
 volatile unsigned char timerFlag = 0;
@@ -45,8 +48,8 @@ typedef struct task {
   int (*TickFct)(int);          // Address of tick function
 } task;
 
-static task task1, task2, task3, task4;
-task* tasks[] = { &task1, &task2, &task3, &task4 };
+static task task1, task2, task3, task4, task5;
+task* tasks[] = { &task1, &task2, &task3, &task4, &task5 };
 const unsigned char numTasks = sizeof(tasks) / sizeof(tasks[0]);
 const char startState = 0;    // Refers to first state enum
 unsigned long GCD = 0;        // For timer period
@@ -155,7 +158,7 @@ int TickFct_Keypad(int state) {
 enum RFID_States { RFID_SMStart, RFID_Wait, RFID_Read, RFID_Cooldown };
 int TickFct_RFID(int state) {
 	
-	volatile unsigned char i;
+	static unsigned char i;
 	
 	switch (state) {	// State transitions
 		case RFID_SMStart:
@@ -255,6 +258,90 @@ int TickFct_LED(int state) {
 	return state;
 }
 
+// Task 5 (Determines if bike is being moved while locked)
+enum BS_States { BS_SMStart, BS_Wait, BS_Count, BS_Alarm };
+int TickFct_BikeSteal(int state) {	// State transitions
+
+	static unsigned char i;
+
+	switch (state) {
+		case BS_SMStart:
+			state = BS_Wait;
+			break;
+
+		case BS_Wait:
+			if (bikeLocked && (bikeSpeed >= 5)) {
+				state = BS_Count;
+				i = 0;
+			}
+			else {
+				state = BS_Wait;
+			}
+			break;
+
+		case BS_Count:
+			if (!bikeLocked || (bikeSpeed < 5)) {
+				state = BS_Wait;
+			}
+			else if ((i < 10) && bikeLocked && (bikeSpeed >= 5)) {
+				state = BS_Count;
+			}
+			else if (!(i < 10) && bikeLocked && (bikeSpeed >= 5)) {
+				state = BS_Alarm;
+			}
+			else {
+				state = BS_Count;
+				Serial.println("Something went wrong in BS_Count!");
+			}
+			break;
+
+		case BS_Alarm:
+			if (bikeLocked) {
+				state = BS_Alarm;
+			}
+			else if (!bikeLocked) {
+				state = BS_Wait;
+			}
+			break;
+		
+		default:
+			state = BS_SMStart;
+			break;
+	}
+	switch (state) {	// State actions
+		case BS_Wait:
+			bikeAlarm = false;
+			break;
+
+		case BS_Count:
+			Serial.print("i (before) = ");
+			Serial.println(i);
+			++i;
+			Serial.print("i (after) = ");
+			Serial.println(i);
+			bikeAlarm = false;
+			break;
+
+		case BS_Alarm:
+			bikeAlarm = true;
+			break;
+
+		default:
+			break;
+	}
+
+	// DEBUGGING
+	Serial.print("BS_state = ");
+	Serial.println(state);
+	// Serial.print("i = ");
+	// Serial.println(i);
+	Serial.print("bikeAlarm = ");
+	Serial.println(bikeAlarm);
+	Serial.println();
+
+	return state;
+}
+
 void setup() {
   unsigned char j = 0;
 
@@ -284,6 +371,13 @@ void setup() {
   tasks[j]->period = 100000;
   tasks[j]->elapsedTime = tasks[j]->period;
   tasks[j]->TickFct = &TickFct_LED;
+  ++j;
+
+  // Task 5 (Determines if bike is being moved while locked)
+  tasks[j]->state = startState;
+  tasks[j]->period = 500000;
+  tasks[j]->elapsedTime = tasks[j]->period;
+  tasks[j]->TickFct = &TickFct_BikeSteal;
   ++j;
 
   // Find GCD for timer's period
