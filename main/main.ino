@@ -28,7 +28,7 @@ char keypadKeys[4][4] {
 byte rowPins[4] = {9, 8, 7, 6};			// Keypad row pinouts, provided by ELEGOO
 byte colPins[4] = {5, 4, 3, 2};			// Keypad col pinouts, provided by ELEGOO
 char keypadCode[4] = {'1','2','3','4'}; // Code to lock/unlock bike (read right to left)
-Keypad bikeKeypad = Keypad(makeKeymap(keypadKeys), rowPins, colPins, 4, 4); 	// Instantiate Keypad object
+Keypad bikeKeypad = Keypad(makeKeymap(keypadKeys), rowPins, colPins, 4, 4);
 bool bikeLocked = false; 				// Flag for lock status
 char inputKey;							// Storing keypad button
 
@@ -201,6 +201,7 @@ int TickFct_RFID(int state) {
 				RFID.uid.uidByte[2] == 0x25 &&
 				RFID.uid.uidByte[3] == 0x0C) {
 					
+				tone(BUZZER, 400, 100);
 				bikeLocked = !bikeLocked;
 				
 				Serial.println("UID read success!");
@@ -208,6 +209,7 @@ int TickFct_RFID(int state) {
 				Serial.println(bikeLocked);
 			}
 			else {
+				tone(BUZZER, 200, 600);
 				Serial.println("UID read fail!");
 			}
 			break;
