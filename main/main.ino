@@ -3,16 +3,17 @@
 #include <SPI.h>
 #include <MFRC522.h>
 
-#define RST_PIN   10
-#define SS_PIN    53
-#define BUZZER    11
-#define BLUE_LED  23
-#define GREEN_LED 22
-#define RED_LED_1 24
-#define RED_LED_2 25
-#define RED_LED_3 26
-#define RED_LED_4 27
-#define RED_LED_5 28
+#define RST_PIN    10
+#define SS_PIN     53
+#define BUZZER     11
+#define ACT_BUZZER 29
+#define BLUE_LED   23
+#define GREEN_LED  22
+#define RED_LED_1  24
+#define RED_LED_2  25
+#define RED_LED_3  26
+#define RED_LED_4  27
+#define RED_LED_5  28
 
 MFRC522 RFID(SS_PIN, RST_PIN);	// Create RFID instance
 
@@ -53,8 +54,8 @@ typedef struct task {
   int (*TickFct)(int);          // Address of tick function
 } task;
 
-static task task1, task2, task3, task4, task5, task6;
-task* tasks[] = { &task1, &task2, &task3, &task4, &task5, &task6 };
+static task task1, task2, task3, task4, task5, task6, task7;
+task* tasks[] = { &task1, &task2, &task3, &task4, &task5, &task6, &task7 };
 const unsigned char numTasks = sizeof(tasks) / sizeof(tasks[0]);
 const char startState = 0;    // Refers to first state enum
 unsigned long GCD = 0;        // For timer period
@@ -229,24 +230,6 @@ int TickFct_RFID(int state) {
 		default:
 			break;
 	}
-
-/* 	// Look for any RFID cards, select one if present
-	if (!RFID.PICC_IsNewCardPresent() || !RFID.PICC_ReadCardSerial()) return state;
-
-	// Check the UID of the tag (first 4 bytes)
-	if (RFID.uid.uidByte[0] == 0xA3 &&
-		RFID.uid.uidByte[1] == 0x26 &&
-		RFID.uid.uidByte[2] == 0x25 &&
-		RFID.uid.uidByte[3] == 0x0C) {
-		bikeLocked = !bikeLocked;
-		Serial.println("UID read success!");
-		Serial.print("Variable bikeLocked = ");
-		Serial.println(bikeLocked);
-	}
-	else {
-		Serial.println("UID read fail!");
-	} */
-
 	return state;
 }
 
@@ -369,6 +352,68 @@ int TickFct_AlarmLED(int state) {
 	return state;
 }
 
+// Task 7 (Sounds alarm if bike is being moved while locked)
+enum SA_States { SA_SMStart, SA_Wait, SA_On1, SA_On2 };
+int TickFct_SoundAlarm(int state) {
+	switch (state) {	// State transitions
+		case SA_SMStart:
+			state = SA_Wait;
+			break;
+
+		case SA_Wait:
+			if (bikeAlarm) {
+				state = SA_On1;
+				digitalWrite(ACT_BUZZER, HIGH);
+			}
+			else {
+				state = SA_Wait;
+			}
+			break;
+
+		case SA_On1:
+			if (bikeAlarm) {
+				state = SA_On2;
+			}
+			else {
+				noTone(BUZZER);
+				digitalWrite(ACT_BUZZER, LOW);
+				state = SA_Wait;
+			}
+			break;
+
+		case SA_On2:
+			if (bikeAlarm) {
+				state = SA_On1;
+			}
+			else {
+				noTone(BUZZER);
+				digitalWrite(ACT_BUZZER, LOW);
+				state = SA_Wait;
+			}
+			break;
+
+		default:
+			state = SA_SMStart;
+			break;
+	}
+	switch (state) {	// State actions
+		case SA_Wait:
+			break;
+
+		case SA_On1:
+			tone(BUZZER, 500);
+			break;
+
+		case SA_On2:
+			tone(BUZZER, 300);
+			break;
+
+		default:
+			break;
+	}
+	return state;
+}
+
 void setup() {
   unsigned char j = 0;
 
@@ -414,6 +459,13 @@ void setup() {
   tasks[j]->TickFct = &TickFct_AlarmLED;
   ++j;
 
+// Task 7 (Sounds alarm if bike is being moved while locked)
+  tasks[j]->state = startState;
+  tasks[j]->period = 100000;
+  tasks[j]->elapsedTime = tasks[j]->period;
+  tasks[j]->TickFct = &TickFct_SoundAlarm;
+  ++j;
+
   // Find GCD for timer's period
   GCD = tasks[0]->period;
   for (unsigned char i = 1; i < numTasks; ++i) {
@@ -427,6 +479,8 @@ void setup() {
   pinMode(RED_LED_3, OUTPUT);
   pinMode(RED_LED_4, OUTPUT);
   pinMode(RED_LED_5, OUTPUT);
+  pinMode(BUZZER, OUTPUT);
+  pinMode(ACT_BUZZER, OUTPUT);
 
   Serial.begin(9600);                 // Baud rate is 9600 (serial output)
   SPI.begin();						  // Initialize SPI bus for RFID
