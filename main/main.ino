@@ -14,6 +14,7 @@
 #define RED_LED_3  26
 #define RED_LED_4  27
 #define RED_LED_5  28
+#define MAX_SPEED  5
 
 MFRC522 RFID(SS_PIN, RST_PIN);	// Create RFID instance
 
@@ -37,7 +38,7 @@ char keypadCode[4] = {'1','2','3','4'}; // Code to lock/unlock bike (read right 
 Keypad bikeKeypad = Keypad(makeKeymap(keypadKeys), rowPins, colPins, 4, 4);
 bool bikeLocked = false; 				// Flag for lock status
 bool bikeAlarm = false; 				// Flag for alarm sounding
-int bikeSpeed = 5;						// Current speed in MPH
+int bikeSpeed = 0;						// Current speed in MPH
 char inputKey;							// Storing keypad button
 
 
@@ -54,11 +55,19 @@ typedef struct task {
   int (*TickFct)(int);          // Address of tick function
 } task;
 
-static task task1, task2, task3, task4, task5, task6, task7;
-task* tasks[] = { &task1, &task2, &task3, &task4, &task5, &task6, &task7 };
+static task task0, task1, task2, task3, task4, task5, task6, task7, task8;
+task* tasks[] = { &task0, &task1, &task2, &task3, &task4, &task5, &task6, &task7, &task8 };
 const unsigned char numTasks = sizeof(tasks) / sizeof(tasks[0]);
 const char startState = 0;    // Refers to first state enum
 unsigned long GCD = 0;        // For timer period
+
+// Task 0 (Receives speed from other board)
+int TickFct_GetSpeed(int state) {
+	if (Serial1.available() > 0) {
+		bikeSpeed = Serial1.read();
+	}
+	return state;
+}
 
 // Task 1 (Store the key being pressed on keypad)
 enum GK_States { GK_SMStart };
@@ -68,10 +77,11 @@ int TickFct_GetKey(int state) {
 	inputKey = tempKey;
 	tone(BUZZER, 400, 100);
 
-	Serial.print("Input key = ");
-	Serial.println(inputKey);
-	Serial.print("Variable bikeLocked = ");
-	Serial.println(bikeLocked);
+	// DEBUGGING
+	// Serial.print("Input key = ");
+	// Serial.println(inputKey);
+	// Serial.print("Variable bikeLocked = ");
+	// Serial.println(bikeLocked);
   }
   return state;
 }
@@ -182,7 +192,7 @@ int TickFct_RFID(int state) {
 
 		case RFID_Read:
 			i = 0;
-			Serial.println("Waiting 2 seconds...\n");
+			// Serial.println("Waiting 2 seconds...\n");
 			state = RFID_Cooldown;
 			break;
 
@@ -213,13 +223,13 @@ int TickFct_RFID(int state) {
 				tone(BUZZER, 400, 100);
 				bikeLocked = !bikeLocked;
 
-				Serial.println("UID read success!");
-				Serial.print("Variable bikeLocked = ");
-				Serial.println(bikeLocked);
+				// Serial.println("UID read success!");
+				// Serial.print("Variable bikeLocked = ");
+				// Serial.println(bikeLocked);
 			}
 			else {
 				tone(BUZZER, 200, 600);
-				Serial.println("UID read fail!");
+				// Serial.println("UID read fail!");
 			}
 			break;
 
@@ -258,7 +268,7 @@ int TickFct_BikeSteal(int state) {	// State transitions
 			break;
 
 		case BS_Wait:
-			if (bikeLocked && (bikeSpeed >= 5)) {
+			if (bikeLocked && (bikeSpeed >= MAX_SPEED)) {
 				state = BS_Count;
 				i = 0;
 			}
@@ -268,18 +278,18 @@ int TickFct_BikeSteal(int state) {	// State transitions
 			break;
 
 		case BS_Count:
-			if (!bikeLocked || (bikeSpeed < 5)) {
+			if (!bikeLocked || (bikeSpeed < MAX_SPEED)) {
 				state = BS_Wait;
 			}
-			else if ((i < 10) && bikeLocked && (bikeSpeed >= 5)) {
+			else if ((i < 10) && bikeLocked && (bikeSpeed >= MAX_SPEED)) {
 				state = BS_Count;
 			}
-			else if (!(i < 10) && bikeLocked && (bikeSpeed >= 5)) {
+			else if (!(i < 10) && bikeLocked && (bikeSpeed >= MAX_SPEED)) {
 				state = BS_Alarm;
 			}
 			else {
 				state = BS_Count;
-				Serial.println("Something went wrong in BS_Count!");
+				// Serial.println("Something went wrong in BS_Count!");
 			}
 			break;
 
@@ -315,11 +325,11 @@ int TickFct_BikeSteal(int state) {	// State transitions
 	}
 
 	// DEBUGGING
-	Serial.print("i = ");
-	Serial.println(i);
-	Serial.print("bikeAlarm = ");
-	Serial.println(bikeAlarm);
-	Serial.println();
+	// Serial.print("i = ");
+	// Serial.println(i);
+	// Serial.print("bikeAlarm = ");
+	// Serial.println(bikeAlarm);
+	// Serial.println();
 
 	return state;
 }
@@ -414,8 +424,24 @@ int TickFct_SoundAlarm(int state) {
 	return state;
 }
 
+// Task 8 (Sends lock status to the other board)
+int TickFct_SendLockStatus(int state) {
+	int val = bikeLocked ? 1 : 0;
+	if (Serial1.availableForWrite() > 0) {
+		Serial1.write(val);
+	}
+	return state;
+}
+
 void setup() {
   unsigned char j = 0;
+
+  // Task 0 (Receives speed from other board)
+  tasks[j]->state = startState;
+  tasks[j]->period = 200000;
+  tasks[j]->elapsedTime = tasks[j]->period;
+  tasks[j]->TickFct = &TickFct_GetSpeed;
+  ++j;
 
   // Task 1 (Store the key being pressed on keypad)
   tasks[j]->state = startState;
@@ -459,11 +485,18 @@ void setup() {
   tasks[j]->TickFct = &TickFct_AlarmLED;
   ++j;
 
-// Task 7 (Sounds alarm if bike is being moved while locked)
+  // Task 7 (Sounds alarm if bike is being moved while locked)
   tasks[j]->state = startState;
   tasks[j]->period = 100000;
   tasks[j]->elapsedTime = tasks[j]->period;
   tasks[j]->TickFct = &TickFct_SoundAlarm;
+  ++j;
+
+  // Task 8 (Sends lock status to the other board)
+  tasks[j]->state = startState;
+  tasks[j]->period = 200000;
+  tasks[j]->elapsedTime = tasks[j]->period;
+  tasks[j]->TickFct = &TickFct_SendLockStatus;
   ++j;
 
   // Find GCD for timer's period
@@ -482,7 +515,8 @@ void setup() {
   pinMode(BUZZER, OUTPUT);
   pinMode(ACT_BUZZER, OUTPUT);
 
-  Serial.begin(9600);                 // Baud rate is 9600 (serial output)
+//   Serial.begin(9600);                 // Baud rate is 9600 (serial, for debugging)
+  Serial1.begin(9600);                // Baud rate is 9600 (serial1, other board)
   SPI.begin();						  // Initialize SPI bus for RFID
   RFID.PCD_Init();					  // Initialize RFID module
   Timer1.initialize(GCD);             // GCD is in microseconds
