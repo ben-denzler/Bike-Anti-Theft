@@ -70,7 +70,6 @@ int TickFct_GetSpeed(int state) {
 }
 
 // Task 1 (Store the key being pressed on keypad)
-enum GK_States { GK_SMStart };
 int TickFct_GetKey(int state) {
   char tempKey = bikeKeypad.getKey();
   if (tempKey) {
@@ -558,4 +557,7 @@ https://www.arduino.cc/reference/en/libraries/mfrc522/
 Learned how to read the UID of the MFRC522 RFID tag:
 https://randomnerdtutorials.com/security-access-using-mfrc522-rfid-reader-with-arduino/
 https://stackoverflow.com/questions/32839396/how-to-get-the-uid-of-rfid-in-arduino
+
+Arduino Serial communication code:
+https://www.arduino.cc/reference/en/language/functions/communication/serial/
 */
